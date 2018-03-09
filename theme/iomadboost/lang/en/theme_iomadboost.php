@@ -28,3 +28,4 @@ $string['choosereadme'] = 'IomadBoost is the standard theme for Iomad based on M
 $string['iomaddashboard'] = 'Iomad dashboard';
 $string['pluginname'] = 'Iomad Boost';
 $string['region-side-pre'] = 'Right';
+$string['configtitle'] = 'Iomad Boost';   
