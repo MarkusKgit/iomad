@@ -55,7 +55,7 @@ class company_license_users_form extends moodleform {
         $courseselect = array();
         $first = true;
         foreach ($courses as $courseid => $course) {
-            $courseselect[$course->id] = $course->fullname;
+            $courseselect[$course->id] = format_string($course->fullname);
             if ($first) {
                 $this->firstcourseid = $courseid;
                 $first = false;
@@ -607,7 +607,7 @@ if ($usersform->is_cancelled() || optional_param('cancel', false, PARAM_BOOL)) {
             }
             $count ++;
         }
-        echo $outputstring."</p>";
+        echo format_string($outputstring)."</p>";
         $usersform->process();
 
         if (!empty($availablewarning)) {
