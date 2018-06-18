@@ -80,8 +80,6 @@ $completion->set_module_viewed($cm);
 if (empty($action)) {
     // Initialize $PAGE, compute blocks
     $PAGE->set_url('/mod/iomadcertificate/view.php', array('id' => $cm->id));
-    $PAGE->set_context($context);
-    $PAGE->set_cm($cm);
     $PAGE->set_title(format_string($iomadcertificate->name));
     $PAGE->set_heading(format_string($course->fullname));
 }
@@ -94,7 +92,7 @@ if (($edit != -1) and $PAGE->user_allowed_editing()) {
 }
 
 // Add block editing button
-if ($PAGE->user_allowed_editing()) {
+if ( empty($action) && $PAGE->user_allowed_editing()) {
     $editvalue = $PAGE->user_is_editing() ? 'off' : 'on';
     $strsubmit = $PAGE->user_is_editing() ? get_string('blockseditoff') : get_string('blocksediton');
     $url = new moodle_url($CFG->wwwroot . '/mod/iomadcertificate/view.php', array('id' => $cm->id, 'edit' => $editvalue));

@@ -40,7 +40,8 @@ function mycourses_get_my_completion($datefrom = 0) {
                                        FROM {local_iomad_track} cc
                                        JOIN {course} c ON (c.id = cc.courseid)
                                        WHERE cc.userid = :userid
-                                       AND c.visible = 1",
+                                       AND c.visible = 1
+                                       ORDER BY c.fullname, cc.timecompleted DESC",
                                        array('userid' => $USER->id));
     $myinprogress = $DB->get_records_sql("SELECT cc.id, cc.userid, cc.course as courseid, c.fullname as coursefullname, c.summary as coursesummary
                                           FROM {course_completions} cc
@@ -55,6 +56,7 @@ function mycourses_get_my_completion($datefrom = 0) {
 
     // We dont care about these.  If you have enrolled then you are started.
     $mynotstartedenrolled = array();
+    $unsortedcourses = array();
 
     $mynotstartedlicense = $DB->get_records_sql("SELECT clu.id, clu.userid, clu.licensecourseid as courseid, c.fullname as coursefullname, c.summary as coursesummary
                                           FROM {companylicense_users} clu
@@ -102,18 +104,18 @@ function mycourses_get_my_completion($datefrom = 0) {
                                                         $inprogresssql",
                                                         array('enrol' => 'self'));
         foreach ($companyselfenrolcourses as $companyselfenrolcourse) {
-            $myselfenrolcourses[$companyselfenrolcourse->id] = $companyselfenrolcourse;
+            $myavailablecourses[$companyselfenrolcourse->coursefullname] = $companyselfenrolcourse;
         }
         foreach ($sharedselfenrolcourses as $sharedselfenrolcourse) {
-            $myselfenrolcourses[$sharedselfenrolcourse->id] = $sharedselfenrolcourse;
+            $myavailablecourses[$sharedselfenrolcourse->coursefullname] = $sharedselfenrolcourse;
         }
     }
     foreach($mynotstartedlicense as $licensedcourse) {
-        $myavailablecourses[] = $licensedcourse;
+        $myavailablecourses[$licensedcourse->coursefullname] = $licensedcourse;
     }
-    foreach($myselfenrolcourses as $myselfenrolcourse) {
-        $myavailablecourses[] = $myselfenrolcourse;
-    }
+
+    // Put them into alpahbetical order.
+    ksort($myavailablecourses, SORT_NATURAL | SORT_FLAG_CASE);
 
     // Deal with completed course scores and links for certificates.
     foreach ($mycompleted as $id => $completed) {

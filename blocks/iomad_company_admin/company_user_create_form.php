@@ -247,7 +247,8 @@ class user_edit_form extends company_moodleform {
                 }
                 if (!$licensecourses = $DB->get_records_sql_menu("SELECT c.id, c.fullname FROM {companylicense_courses} clc
                                                              JOIN {course} c ON (clc.courseid = c.id
-                                                             AND clc.licenseid = :licenseid)",
+                                                             AND clc.licenseid = :licenseid)
+                                                             ORDER BY c.fullname",
                                                              array('licenseid' => $mylicenseid))) {
                     $licensecourses = array();
                 }
@@ -421,6 +422,10 @@ if ($mform->is_cancelled()) {
     redirect($dashboardurl);
     die;
 } else if ($data = $mform->get_data()) {
+    // Trim first and lastnames
+    $data->firstname = trim($data->firstname);
+    $data->lastname = trim($data->lastname);
+
     $data->userid = $USER->id;
     if ($companyid > 0) {
         $data->companyid = $companyid;
