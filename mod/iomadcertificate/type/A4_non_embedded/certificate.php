@@ -18,15 +18,12 @@
 /**
  * A4_non_embedded iomadcertificate type
  *
- * @package    mod
- * @subpackage iomadcertificate
+ * @package    mod_iomadcertificate
  * @copyright  Mark Nelson <markn@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-if (!defined('MOODLE_INTERNAL')) {
-    die('Direct access to this script is forbidden.'); // It must be included from view.php
-}
+defined('MOODLE_INTERNAL') || die();
 
 $pdf = new PDF($iomadcertificate->orientation, 'mm', 'A4', true, 'UTF-8', false);
 
@@ -42,11 +39,11 @@ $pdf->AddPage();
 if ($iomadcertificate->orientation == 'L') {
     $x = 10;
     $y = 30;
-    $sealx = 230;
+    $sealx = 180;
     $sealy = 150;
-    $sigx = 47;
-    $sigy = 155;
-    $custx = 47;
+    $sigx = 35;
+    $sigy = 160;
+    $custx = 45;
     $custy = 155;
     $wmarkx = 40;
     $wmarky = 31;
@@ -56,7 +53,8 @@ if ($iomadcertificate->orientation == 'L') {
     $brdry = 0;
     $brdrw = 297;
     $brdrh = 210;
-    $codey = 175;
+	$codex = 250;
+    $codey = 19;
 } else { // Portrait
     $x = 10;
     $y = 40;
@@ -74,6 +72,7 @@ if ($iomadcertificate->orientation == 'L') {
     $brdry = 0;
     $brdrw = 210;
     $brdrh = 297;
+	$codex = -200;
     $codey = 250;
 }
 
@@ -88,20 +87,20 @@ iomadcertificate_print_image($pdf, $iomadcertificate, CERT_IMAGE_SEAL, $sealx, $
 iomadcertificate_print_image($pdf, $iomadcertificate, CERT_IMAGE_SIGNATURE, $sigx, $sigy, '', '');
 
 // Add text
-$pdf->SetTextColor(0, 0, 120);
+$pdf->SetTextColor(223, 122, 28);
 iomadcertificate_print_text($pdf, $x, $y, 'C', 'Helvetica', '', 30, get_string('title', 'iomadcertificate'));
 $pdf->SetTextColor(0, 0, 0);
 iomadcertificate_print_text($pdf, $x, $y + 20, 'C', 'Times', '', 20, get_string('certify', 'iomadcertificate'));
 iomadcertificate_print_text($pdf, $x, $y + 36, 'C', 'Helvetica', '', 30, fullname($certuser));
 iomadcertificate_print_text($pdf, $x, $y + 55, 'C', 'Helvetica', '', 20, get_string('statement', 'iomadcertificate'));
-iomadcertificate_print_text($pdf, $x, $y + 72, 'C', 'Helvetica', '', 20, $course->fullname);
-iomadcertificate_print_text($pdf, $x, $y + 92, 'C', 'Helvetica', '', 14, iomadcertificate_get_date($iomadcertificate, $certrecord, $course, $certuser->id));
-iomadcertificate_print_text($pdf, $x, $y + 102, 'C', 'Times', '', 10, iomadcertificate_get_grade($iomadcertificate, $course, $certuser->id));
-iomadcertificate_print_text($pdf, $x, $y + 112, 'C', 'Times', '', 10, iomadcertificate_get_outcome($iomadcertificate, $course, $certuser->id));
+iomadcertificate_print_text($pdf, $x, $y + 72, 'C', 'Helvetica', '', 20, format_string($course->fullname));
+iomadcertificate_print_text($pdf, $x, $y + 92, 'C', 'Helvetica', '', 14, iomadcertificate_get_date($iomadcertificate, $certrecord, $course));
+iomadcertificate_print_text($pdf, $x, $y + 102, 'C', 'Times', '', 10,  iomadcertificate_get_grade($iomadcertificate, $course, $certuser->id));
+iomadcertificate_print_text($pdf, $x, $y + 112, 'C', 'Times', '', 10, iomadcertificate_get_outcome($iomadcertificate, $course));
 if ($iomadcertificate->printhours) {
     iomadcertificate_print_text($pdf, $x, $y + 122, 'C', 'Times', '', 10, get_string('credithours', 'iomadcertificate') . ': ' . $iomadcertificate->printhours);
 }
-iomadcertificate_print_text($pdf, $x, $codey, 'C', 'Times', '', 10, iomadcertificate_get_code($iomadcertificate, $certrecord));
+iomadcertificate_print_text($pdf, $codex, $codey, 'C', 'Helvetica', '', 10, iomadcertificate_get_code($iomadcertificate, $certrecord));
 $i = 0;
 if ($iomadcertificate->printteacher) {
     $context = context_module::instance($cm->id);
@@ -114,4 +113,3 @@ if ($iomadcertificate->printteacher) {
 }
 
 iomadcertificate_print_text($pdf, $custx, $custy, 'L', null, null, null, $iomadcertificate->customtext);
-?>

@@ -99,6 +99,12 @@ $capabilities = array(
         'contextlevel' => CONTEXT_BLOCK
     ),
 
+    'block/iomad_company_admin:assign_educator' => array(
+
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_BLOCK
+    ),
+
     'block/iomad_company_admin:company_add' => array(
 
         'captype' => 'write',
@@ -200,6 +206,24 @@ $capabilities = array(
     ),
 
     'block/iomad_company_admin:editusers' => array(
+
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_BLOCK,
+    ),
+
+    'block/iomad_company_admin:edituserpassword' => array(
+
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_BLOCK,
+    ),
+
+    'block/iomad_company_admin:deleteuser' => array(
+
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_BLOCK,
+    ),
+
+    'block/iomad_company_admin:suspenduser' => array(
 
         'captype' => 'write',
         'contextlevel' => CONTEXT_BLOCK,

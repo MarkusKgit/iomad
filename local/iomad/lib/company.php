@@ -90,6 +90,7 @@ class company {
      *
      **/
     public function get_managertypes() {
+        global $CFG;
 
         $returnarray = array('0' => get_string('user', 'block_iomad_company_admin'));
         $systemcontext = context_system::instance();
@@ -98,6 +99,9 @@ class company {
         }
         if (iomad::has_capability('block/iomad_company_admin:assign_department_manager', $systemcontext)) {
             $returnarray['2'] = get_string('departmentmanager', 'block_iomad_company_admin');
+        }
+        if (!$CFG->iomad_autoenrol_managers && iomad::has_capability('block/iomad_company_admin:assign_educator', $systemcontext)) {
+            $returnarray['3'] = get_string('educator', 'block_iomad_company_admin');
         }
         return $returnarray;
     }
@@ -344,15 +348,12 @@ class company {
      **/
     public static function get_company_byuserid($userid) {
         global $DB;
-        $company = $DB->get_record_sql("SELECT c.*
-                                        FROM
-                                            {company_users} cu
-                                            INNER JOIN {company} c ON cu.companyid = c.id
-                                        WHERE cu.userid = :userid
-                                        ORDER BY cu.id
-                                        LIMIT 1",
-                                       array('userid' => $userid));
-        return $company;
+        $companies = (array) $DB->get_record_sql("SELECT c.* FROM {company_users} cu
+                                                  INNER JOIN {company} c ON cu.companyid = c.id
+                                                  WHERE cu.userid = :userid
+                                                  ORDER BY cu.id",
+                                                  array('userid' => $userid), 0, 1);
+        return array_shift($companies);
     }
 
     /**
@@ -484,25 +485,50 @@ class company {
                                                          'shared' => 0));
         }
         // Set up manager roles.
-        if (!$licensed && $CFG->iomad_autoenrol_managers) {
-            if ($companymanagers = $DB->get_records_sql("SELECT * FROM {company_users}
-                                                         WHERE companyid = :companyid
-                                                         AND managertype != 0", array('companyid' => $this->id))) {
-                $companycoursenoneditorrole = $DB->get_record('role',
-                                                   array('shortname' => 'companycoursenoneditor'));
-                $companycourseeditorrole = $DB->get_record('role',
-                                                            array('shortname' => 'companycourseeditor'));
-                foreach ($companymanagers as $companymanager) {
-                    if ($user = $DB->get_record('user', array('id' => $companymanager->userid,
-                                                              'deleted' => 0)) ) {
-                        if ($DB->record_exists('course', array('id' => $course->id))) {
-                            if (!$own) {
-                                // Not created by a company manager.
-                                company_user::enrol($user, array($course->id), $this->id,
-                                                    $companycoursenoneditorrole->id);
-                            } else {
-                                if ($companymanager->managertype == 2) {
-                                    // Assign the department manager course access role.
+        if (!$licensed) {
+            $companycoursenoneditorrole = $DB->get_record('role',
+                                               array('shortname' => 'companycoursenoneditor'));
+            $companycourseeditorrole = $DB->get_record('role',
+                                                        array('shortname' => 'companycourseeditor'));
+            if ($CFG->iomad_autoenrol_managers) {
+                // Enrol the managers as teacher types.
+                if ($companymanagers = $DB->get_records_sql("SELECT * FROM {company_users}
+                                                             WHERE companyid = :companyid
+                                                             AND managertype != 0", array('companyid' => $this->id))) {
+                    foreach ($companymanagers as $companymanager) {
+                        if ($user = $DB->get_record('user', array('id' => $companymanager->userid,
+                                                                  'deleted' => 0)) ) {
+                            if ($DB->record_exists('course', array('id' => $course->id))) {
+                                if (!$own) {
+                                    // Not created by a company manager.
+                                    company_user::enrol($user, array($course->id), $this->id,
+                                                        $companycoursenoneditorrole->id);
+                                } else {
+                                    if ($companymanager->managertype == 2) {
+                                        // Assign the department manager course access role.
+                                        company_user::enrol($user, array($course->id), $this->id,
+                                                            $companycoursenoneditorrole->id);
+                                    } else {
+                                        // Assign the company manager course access role.
+                                        company_user::enrol($user, array($course->id), $this->id,
+                                                            $companycourseeditorrole->id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Enrol the educators as teacher types.
+                if ($educators = $DB->get_records_sql("SELECT * FROM {company_users}
+                                                             WHERE companyid = :companyid
+                                                             AND educator != 0", array('companyid' => $this->id))) {
+                    foreach ($educators as $educator) {
+                        if ($user = $DB->get_record('user', array('id' => $educator->userid,
+                                                                  'deleted' => 0)) ) {
+                            if ($DB->record_exists('course', array('id' => $course->id))) {
+                                if ($DB->record_exists('iomad_courses', array('courseid' => $course->id, 'shared' => 1))) {
+                                    // Not created by a company manager.
                                     company_user::enrol($user, array($course->id), $this->id,
                                                         $companycoursenoneditorrole->id);
                                 } else {
@@ -850,7 +876,9 @@ class company {
     public function get_userlevel($user) {
 
         global $DB;
-        if (is_siteadmin()) {
+        if (is_siteadmin() || 
+            iomad::has_capability('block/iomad_company_admin:company_add', context_system::instance()) ||
+            iomad::has_capability('block/iomad_company_admin:company_add_child', context_system::instance())) {
             return self::get_company_parentnode($this->id);
         }
         if ($userdepartment = $DB->get_record('company_users', array('userid' => $user->id, 'companyid' => $this->id))) {
@@ -2901,7 +2929,7 @@ class company {
                     $timestart = time();
                 }
 
-                if (empty($licenserecord->type)) {
+                if ($licenserecord->type == 0 || $licenserecord->type == 2) {
                     // Set the timeend to be time start + the valid length for the license in days.
                     $timeend = $timestart + ($licenserecord->validlength * 24 * 60 * 60 );
                 } else {
@@ -2909,7 +2937,19 @@ class company {
                     $timeend = $licenserecord->expirydate;
                 }
 
-                $enrol->enrol_user($instance, $user->id, $instance->roleid, $timestart, $timeend);
+                if ($licenserecord->type < 2) {
+                    $enrol->enrol_user($instance, $user->id, $instance->roleid, $timestart, $timeend);
+                } else {
+                    // Educator role.
+                    if ($DB->get_record('iomad_courses', array('courseid' => $course->id, 'shared' => 0))) {
+                        // Not shared.
+                        $role = $DB->get_record('role', array('shortname' => 'companycourseeditor'));
+                    } else {
+                        // Shared.
+                        $role = $DB->get_record('role', array('shortname' => 'companycoursenoneditor'));
+                    }
+                    $enrol->enrol_user($instance, $user->id, $role->id, $timestart, $timeend);
+                }
 
                 // Get the userlicense record.
                 $userlicense = $DB->get_record('companylicense_users', array('id' => $userlicid));
@@ -2917,16 +2957,11 @@ class company {
                 // Add the user to the appropriate course group.
                 if (!empty($course->groupmode)) {
                     $userlicense = $DB->get_record('companylicense_users', array('id' => $userlicid));
-                    self::add_user_to_shared_course($instance->courseid, $user->id, $license->companyid, $userlicense->groupid);
+                    self::add_user_to_shared_course($instance->courseid, $user->id, $licenserecord->companyid, $userlicense->groupid);
                 }
 
                 // Update the userlicense record to mark it as in use.
                 $DB->set_field('companylicense_users', 'isusing', 1, array('id' => $userlicense->id));
-
-                // Send welcome.
-                if ($instance->customint4) {
-                    $enrol->email_welcome_message($instance, $user);
-                }
             }
         }
 
@@ -3255,86 +3290,9 @@ class company {
 
         $userid = $event->userid;
         $courseid = $event->courseid;
+        $action = 'autodelete';
 
-        // Remove enrolments
-        $plugins = enrol_get_plugins(true);
-        $instances = enrol_get_instances($courseid, true);
-        foreach ($instances as $instance) {
-            $plugin = $plugins[$instance->enrol];
-            $plugin->unenrol_user($instance, $userid);
-        }
-
-        // Remove completions
-        $DB->delete_records('course_completions', array('userid' => $userid, 'course' => $courseid));
-        if ($compitems = $DB->get_records('course_completion_criteria', array('course' => $courseid))) {
-            foreach ($compitems as $compitem) {
-                $DB->delete_records('course_completion_crit_compl', array('userid' => $userid,
-                                                                          'criteriaid' => $compitem->id));
-            }
-        }
-        if ($modules = $DB->get_records_sql("SELECT id FROM {course_modules} WHERE course = :course AND completion != 0", array('course' => $courseid))) {
-            foreach ($modules as $module) {
-                $DB->delete_records('course_modules_completion', array('userid' => $userid, 'coursemoduleid' => $module->id));
-            }
-        }
-
-        // Deal with SCORM.
-        $DB->execute("DELETE FROM {scorm_scoes_track}
-                      WHERE userid = :userid
-                      AND scormid IN (
-                         SELECT id FROM {scorm}
-                         WHERE courseid = :coursid)",
-                      array('userid' => $userid, 'courseid' => $courseid));
-
-        // Remove grades
-        if ($items = $DB->get_records('grade_items', array('courseid' => $courseid))) {
-            foreach ($items as $item) {
-                $DB->delete_records('grade_grades', array('userid' => $userid, 'itemid' => $item->id));
-            }
-        }
-
-        // Remove quiz entries.
-        if ($quizzes = $DB->get_records('quiz', array('course' => $courseid))) {
-            // We have quiz(zes) so clear them down.
-            foreach ($quizzes as $quiz) {
-                $DB->execute("DELETE FROM {quiz_attempts} WHERE quiz=:quiz AND userid = :userid", array('quiz' => $quiz->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {quiz_grades} WHERE quiz=:quiz AND userid = :userid", array('quiz' => $quiz->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {quiz_overrides} WHERE quiz=:quiz AND userid = :userid", array('quiz' => $quiz->id, 'userid' => $userid));
-            }
-        }
-
-        // Remove certificate info.
-        if ($certificates = $DB->get_records('iomadcertificate', array('course' => $courseid))) {
-            foreach ($certificates as $certificate) {
-                $DB->execute("DELETE FROM {iomadcertificate_issues} WHERE iomadcertificateid = :certid AND userid = :userid", array('certid' => $certificate->id, 'userid' => $userid));
-            }
-        }
-
-        // Remove feedback info.
-        if ($feedbacks = $DB->get_records('feedback', array('course' => $courseid))) {
-            foreach ($feedbacks as $feedback) {
-                $DB->execute("DELETE FROM {feedback_completed} WHERE feedback = :feedbackid AND userid = :userid", array('feedbackid' => $feedback->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {feedback_completedtmp} WHERE feedback = :feedbackid AND userid = :userid", array('feedbackid' => $feedback->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {feedback_tracking} WHERE feedback = :feedbackid AND userid = :userid", array('feedbackid' => $feedback->id, 'userid' => $userid));
-            }
-        }
-
-        // Remove lesson info.
-        if ($lessons = $DB->get_records('lesson', array('course' => $courseid))) {
-            foreach ($lessons as $lesson) {
-                $DB->execute("DELETE FROM {lesson_attempts} WHERE lessonid = :lessonid AND userid = :userid", array('lessonid' => $lesson->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {lesson_grades} WHERE lessonid = :lessonid AND userid = :userid", array('lessonid' => $lesson->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {lesson_branch} WHERE lessonid = :lessonid AND userid = :userid", array('lessonid' => $lesson->id, 'userid' => $userid));
-                $DB->execute("DELETE FROM {lesson_timer} WHERE lessonid = :lessonid AND userid = :userid", array('lessonid' => $lesson->id, 'userid' => $userid));
-            }
-        }
-
-        // Fix company licenses
-        if ($licenses = $DB->get_records('companylicense_users', array('licensecourseid' => $courseid, 'userid' =>$userid, 'isusing' => 1, 'timecompleted' => null))) {
-            $license = array_pop($licenses);
-            $license->timecompleted = time();
-            $DB->update_record('companylicense_users', $license);
-        }
+        company_user::delete_user_course($userid, $courseid, $action);
 
         return true;
     }

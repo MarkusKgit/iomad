@@ -56,33 +56,44 @@ class iomad {
      * Returns int or false;
      *
      **/
-    public static function is_company_user () {
+    public static function is_company_user ($user = null) {
         global $USER, $DB, $SESSION;
 
-        if (empty($USER->id) && empty($SESSION->currenteditingcompany)) {
+        // Are we being passed a user?
+        if (empty($user)) {
+            $user = $USER;
+        }
+
+        if (empty($user->id) && empty($SESSION->currenteditingcompany)) {
             // We are installing.  Go no further.
             return false;
         }
 
         if (!empty($SESSION->currenteditingcompany)) {
             return $SESSION->currenteditingcompany;
-        } else if ($usercompanies = $DB->get_records('company_users', array('userid' => $USER->id), 'id', 'id,companyid', 0, 1)) {
+        } else if ($usercompanies = $DB->get_records('company_users', array('userid' => $user->id), 'id', 'id,companyid', 0, 1)) {
             $usercompany = array_pop($usercompanies);
             return $usercompany->companyid;
         } else {
             return false;
         }
     }
+
     /**
      * Check to see if a user is a manager in a company.
      *
      * Returns int or false;
      *
      **/
-    public static function is_company_admin () {
+    public static function is_company_admin ($user = null) {
         global $USER, $DB;
 
-        if ($usercompany = $DB->get_record('company_users', array('userid' => $USER->id))) {
+        // Are we being passed a user?
+        if (empty($user)) {
+            $user = $USER;
+        }
+
+        if ($usercompany = $DB->get_record('company_users', array('userid' => $user->id))) {
             if ($usercompany->managertype > 0) {
                 return $usercompany->companyid;
             } else {
@@ -324,12 +335,19 @@ class iomad {
      * @param array $categories list of category objects
      * @return array filtered list of categories
      */
-    public static function iomad_filter_categories( $categories ) {
+    public static function iomad_filter_categories( $categories, $userid = 0 ) {
         global $DB, $USER;
 
         // Check if its the client admin.
-        if (self::has_capability('block/iomad_company_admin:company_view_all', context_system::instance())) {
+        if (self::has_capability('block/iomad_company_admin:company_view_all', context_system::instance()) && empty($userid)) {
             return $categories;
+        }
+
+        if (empty($userid)) {
+            $user = $USER;
+        } else {
+            $user = $DB->get_record('user', array('id' => $userid));
+            $user->company = company::get_company_byuserid($userid);
         }
 
         $iomadcategories = array();
@@ -339,8 +357,8 @@ class iomad {
             if ($company = $DB->get_record( 'company', array('category' => $id) ) ) {
 
                 // If this is not the user's company then do not include.
-                if (!empty( $USER->company )) {
-                    if ($USER->company->id == $company->id) {
+                if (!empty( $user->company )) {
+                    if ($user->company->id == $company->id) {
                         $iomadcategories[ $id ] = $category;
                     }
                 }
@@ -1483,7 +1501,7 @@ class iomad {
      * @return bool
      */
     public static function has_capability($capability, context $context, $companyid = 0) {
-        global $USER;
+        global $USER, $DB;
         
         // If original version says no then it's no.
         // (We also rely on this doing a bunch of sanity checks, so we don't have to)

@@ -308,6 +308,29 @@ class current_company_course_user_selector extends company_user_selector_base {
 }
 
 class potential_company_course_user_selector extends company_user_selector_base {
+
+    public function __construct($name, $options) {
+        $this->companyid  = $options['companyid'];
+        $this->courseid  = $options['courseid'];
+        $this->departmentid = $options['departmentid'];
+        $this->roletype = $options['roletype'];
+        $this->subdepartments = $options['subdepartments'];
+        $this->parentdepartmentid = $options['parentdepartmentid'];
+        parent::__construct($name, $options);
+    }
+
+    protected function get_options() {
+        $options = parent::get_options();
+        $options['companyid'] = $this->companyid;
+        $options['courseid'] = $this->courseid;
+        $options['departmentid'] = $this->departmentid;
+        $options['roletype'] = $this->roletype;
+        $options['subdepartments'] = $this->subdepartments;
+        $options['parentdepartmentid'] = $this->parentdepartmentid;
+        $options['file']    = 'blocks/iomad_company_admin/lib.php';
+        return $options;
+    }
+
     /**
      * Company users enrolled into the selected company course
      * @param <type> $search
@@ -430,13 +453,25 @@ class potential_department_user_selector extends user_selector_base {
         if (!isset( $this->departmentid) ) {
             return array();
         } else {
-            if ($users = $DB->get_records('company_users', array('departmentid' => $this->departmentid,
-                                                                 'managertype' => $this->roletype,
-                                                                 'suspended' => 0), null, 'userid')) {
-                // Only return the keys (user ids).
-                return array_keys($users);
+            if ($this->roletype != 3) {
+                // We dont want users of this type in the list.
+                if ($users = $DB->get_records('company_users', array('departmentid' => $this->departmentid,
+                                                                     'managertype' => $this->roletype,
+                                                                     'suspended' => 0), null, 'userid')) {
+                    // Only return the keys (user ids).
+                    return array_keys($users);
+                } else {
+                    return array();
+                }
             } else {
-                return array();
+                if ($users = $DB->get_records('company_users', array('companyid' => $this->companyid,
+                                                                     'educator' => 1,
+                                                                     'suspended' => 0), null, 'userid')) {
+                    // Only return the keys (user ids).
+                    return array_keys($users);
+                } else {
+                    return array();
+                }
             }
         }
     }
@@ -449,9 +484,9 @@ class potential_department_user_selector extends user_selector_base {
                     WHERE
                     cu.userid = $id
                     AND c.id != :companyid
-                    ORDER BY cu.id
-                    LIMIT 1";
-            if ($company = $DB->get_record_sql($sql, array('companyid' => $this->companyid))) {
+                    ORDER BY cu.id";
+            if ($companies = $DB->get_records_sql($sql, array('companyid' => $this->companyid), 0, 1)) {
+                $company = array_shift($companies);
                 $userlist[$id]->email = $user->email." - ".$company->name;
             }
         }
@@ -549,13 +584,13 @@ class potential_department_user_selector extends user_selector_base {
         }
 
         if ($search) {
-            if ($this->roletype != 0) {
+            if ($this->roletype != 0 && $this->roletype != 3) {
                 $groupname = get_string('potmanagersmatching', 'block_iomad_company_admin', $search);
             } else {
                 $groupname = get_string('potusersmatching', 'block_iomad_company_admin', $search);
             }
         } else {
-            if ($this->roletype != 0) {
+            if ($this->roletype != 0 && $this->roletype != 3) {
                 $groupname = get_string('potmanagers', 'block_iomad_company_admin');
             } else {
                 $groupname = get_string('potusers', 'block_iomad_company_admin');
@@ -640,14 +675,17 @@ class current_department_user_selector extends user_selector_base {
         } else {
             $othermanagersql = "";
         }
+        if ($this->roletype != 3) {
+            $rolesql = "AND cu.managertype = ($this->roletype)";
+        } else {
+            $rolesql = "AND cu.educator = 1";
+        }
 
-        $sql = " FROM
-                    {user} u
-                    INNER JOIN {company_users} cu ON cu.userid = u.id
-                WHERE $wherecondition $othermanagersql AND u.suspended = 0 
-                    AND cu.managertype = ($this->roletype)
-                    AND
-                    u.id != ($USER->id)
+        $sql = " FROM {user} u
+                 INNER JOIN {company_users} cu ON cu.userid = u.id
+                 WHERE $wherecondition $othermanagersql AND u.suspended = 0 
+                 $rolesql
+                 AND  u.id != ($USER->id)
                     AND
                     cu.departmentid = ($this->departmentid)";
 
@@ -672,6 +710,8 @@ class current_department_user_selector extends user_selector_base {
                 $groupname = get_string('departmentusersmatching', 'block_iomad_company_admin', $search);
             } else if ($this->roletype == 1) {
                 $groupname = get_string('companymanagersmatching', 'block_iomad_company_admin', $search);
+            } else if ($this->roletype == 3) {
+                $groupname = get_string('curusersmatching', 'block_iomad_company_admin', $search);
             }
         } else {
             if ($this->roletype == 2) {
@@ -680,6 +720,8 @@ class current_department_user_selector extends user_selector_base {
                 $groupname = get_string('departmentusers', 'block_iomad_company_admin');
             } else if ($this->roletype == 1) {
                 $groupname = get_string('companymanagers', 'block_iomad_company_admin');
+            } else if ($this->roletype == 3) {
+                $groupname = get_string('curusers', 'block_iomad_company_admin');
             }
         }
 
@@ -702,8 +744,11 @@ class potential_license_user_selector extends user_selector_base {
     protected $parentdepartmentid;
     protected $program;
     protected $multiple;
+    protected $license;
 
     public function __construct($name, $options) {
+        global $DB;
+
         $this->companyid  = $options['companyid'];
         $this->licenseid = $options['licenseid'];
         $this->departmentid = $options['departmentid'];
@@ -711,6 +756,8 @@ class potential_license_user_selector extends user_selector_base {
         $this->parentdepartmentid = $options['parentdepartmentid'];
         $this->program = $options['program'];
         $this->multiple = $options['multiple'];
+        $this->license = $DB->get_record('companylicense', array('id' => $this->licenseid));
+
         parent::__construct($name, $options);
     }
 
@@ -729,7 +776,7 @@ class potential_license_user_selector extends user_selector_base {
 
     protected function get_license_user_ids() {
         global $DB;
-        if (!isset( $this->licenseid) ) {
+        if (!isset( $this->license->id) ) {
             return array();
         } else {
             if (!$this->multiple || $this->program) {
@@ -836,14 +883,20 @@ class potential_license_user_selector extends user_selector_base {
         $countfields = 'SELECT COUNT(1)';
         $myusers = company::get_my_users($this->companyid);
 
+        // are we dealing with an educator license?
+        if ($this->license->type > 1) {
+            $edusql = " AND u.id IN (SELECT userid FROM {company_users} WHERE educator = 1) ";
+        } else {
+            $edusql = "";
+        }
         $licenseusers = $this->get_license_user_ids();
-        if (count($licenseusers) > 0 && (!$this->multiple || $this->program)) {
+        if (count($licenseusers) > 0 && (!$this->multiple || !$this->program)) {
             $userfilter = " AND NOT u.id in (" . implode(',', $licenseusers) . ") ";
         } else {
             $userfilter = "";
         }
 
-        // Add in a filter to return just the users beloning to the current USER.
+        // Add in a filter to return just the users belonging to the current USER.
         if (!empty($myusers)) {
             $userfilter .= " AND u.id in (".implode(',',array_keys($myusers)).") ";
         }
@@ -871,7 +924,8 @@ class potential_license_user_selector extends user_selector_base {
                     INNER JOIN {department} d ON d.id = du.departmentid
                 WHERE $wherecondition AND u.suspended = 0 
                     $departmentsql
-                    $userfilter";
+                    $userfilter
+                    $edusql";
 
         $order = ' ORDER BY u.lastname ASC, u.firstname ASC';
 
@@ -1090,11 +1144,11 @@ class current_license_user_selector extends user_selector_base {
             } else {
             }
 
-            if (!empty($rawuser->isusing) && $this->license->type == 0) {
+            if (!empty($rawuser->isusing) && ($this->license->type == 0 || $this->license->type == 2)) {
                 $availableusers[$id]->firstname = ' *' . $availableusers[$id]->email;
             }
         }
-//        $this->process_license_allocations($availableusers);
+
         if ($search) {
             $groupname = get_string('licenseusersmatching', 'block_iomad_company_admin', $search);
         } else {
